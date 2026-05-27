@@ -1231,6 +1231,39 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
 
   if (loading) return <div className="page p-4 fade-in" style={{ textAlign: 'center', paddingTop: '40px' }}>A carregar...</div>;
 
+  // Members see a "under construction" page
+  if (!isAdmin) {
+    return (
+      <div className="page p-4 fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
+        <div style={{
+          width: '100px', height: '100px', borderRadius: '50%',
+          background: 'linear-gradient(135deg, var(--color-primary), #f59e0b)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 24px', fontSize: '3rem',
+          boxShadow: '0 8px 32px rgba(var(--color-primary-rgb, 0,0,0), 0.25)'
+        }}>
+          🚧
+        </div>
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--color-primary)', marginBottom: '12px' }}>
+          Em Construção
+        </h2>
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '1rem', maxWidth: '300px', lineHeight: 1.6, marginBottom: '8px' }}>
+          A secção das <strong>Cotas</strong> está a ser preparada com muito carinho! 🐦
+        </p>
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', maxWidth: '300px', lineHeight: 1.6 }}>
+          Estamos a decidir a melhor forma de gerir as contribuições do grupo. Em breve terão aqui acesso a toda a informação!
+        </p>
+        <div style={{
+          marginTop: '32px', padding: '16px 24px', borderRadius: '12px',
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          fontSize: '0.85rem', color: 'var(--color-text-muted)', maxWidth: '300px'
+        }}>
+          💡 <em>Se tiver alguma sugestão sobre como devemos gerir as cotas, fale com o administrador!</em>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page p-4 fade-in">
       {/* Header */}

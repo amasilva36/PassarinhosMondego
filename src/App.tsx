@@ -224,7 +224,7 @@ function LoginScreen({ theme, toggleTheme, onLogin }: {
 }
 
 // Components
-function Dashboard({ isAdmin }: { isAdmin: boolean }) {
+function Dashboard({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
   const [nextEvent, setNextEvent] = useState<EventLocal | null>(null);
   const [members, setMembers] = useState<MemberLocal[]>([]);
   const [showConfirmed, setShowConfirmed] = useState(false);
@@ -394,7 +394,7 @@ function Dashboard({ isAdmin }: { isAdmin: boolean }) {
                     <div>
                       <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 500 }}>Não podem ir:</p>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {nextEvent.absent_ids.map(id => {
+                        {nextEvent.absent_ids?.map(id => {
                           const member = members.find(m => m.id === id);
                           return member ? (
                             <span key={id} style={{ backgroundColor: '#ef4444', color: 'white', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 500 }}>
@@ -929,7 +929,7 @@ function Events({ isAdmin }: { isAdmin: boolean }) {
                       <div>
                         <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Não podem ir:</p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {event.absent_ids.map(id => {
+                          {event.absent_ids?.map(id => {
                             const member = members.find(m => m.id === id);
                             return member ? (
                               <span key={id} style={{ backgroundColor: '#ef4444', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 500 }}>
@@ -1081,7 +1081,7 @@ function Events({ isAdmin }: { isAdmin: boolean }) {
                     <div>
                       <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Não foram:</p>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {event.absent_ids.map(id => {
+                        {event.absent_ids?.map(id => {
                           const member = members.find(m => m.id === id);
                           return member ? (
                             <span key={id} style={{ backgroundColor: '#ef4444', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 500 }}>

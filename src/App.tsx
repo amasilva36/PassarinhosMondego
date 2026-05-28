@@ -230,10 +230,39 @@ function Dashboard({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
   const [showConfirmed, setShowConfirmed] = useState(false);
   const [managingAttendance, setManagingAttendance] = useState(false);
   const [totalFund, setTotalFund] = useState<number | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showIOSPrompt, setShowIOSPrompt] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsStandalone(true);
+    }
+
     fetchDashboardData();
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } else {
+      const isIosDevice = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+      if (isIosDevice) {
+        setShowIOSPrompt(true);
+      } else {
+        alert("Para instalar esta app no ecrã inicial:\nNo Android: Clique no menu do browser (3 pontinhos) e em 'Adicionar ao ecrã inicial'.\nNo iOS (Safari): Clique em Partilhar e em 'Adicionar ao ecrã principal'.");
+      }
+    }
+  };
 
   async function fetchDashboardData() {
     // Fetch members
@@ -260,7 +289,7 @@ function Dashboard({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
       supabase.from('expenses').select('amount'),
     ]);
     if (paymentsData) {
-      const totalIn = paymentsData.reduce((sum, p) => sum + Number(p.amount), 0);
+      const totalIn = paymentsData.reduce((sum, p) => sum + Number(p.amount), 0) + 210;
       const totalOut = (expensesData || []).reduce((sum, e) => sum + Number(e.amount), 0);
       setTotalFund(totalIn - totalOut);
     }
@@ -304,8 +333,25 @@ function Dashboard({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="page p-4 fade-in">
       <div className="welcome-section mb-4">
-        <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: 'var(--color-primary)' }}>Olá, Passarinho!</h2>
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Bem-vindo ao nosso ninho.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: 'var(--color-primary)' }}>Olá, Passarinho!</h2>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Bem-vindo ao nosso ninho.</p>
+          </div>
+          {!isStandalone && (
+            <button onClick={handleInstallApp} className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', gap: '6px', alignItems: 'center' }}>
+              Instalar App
+            </button>
+          )}
+        </div>
+        {showIOSPrompt && (
+          <div style={{ marginTop: '12px', padding: '12px', background: 'var(--color-surface)', borderRadius: '8px', border: '1px solid var(--color-primary)', fontSize: '0.85rem' }}>
+            <strong>Para instalar no iPhone:</strong><br/>
+            1. Clique no botão de partilhar (quadrado com seta para cima) na barra de navegação do Safari.<br/>
+            2. Deslize para baixo e clique em "Adicionar ao ecrã principal" 📱
+            <button onClick={() => setShowIOSPrompt(false)} style={{ display: 'block', marginTop: '8px', padding: '4px 8px', background: 'none', border: '1px solid var(--color-border)', borderRadius: '4px', cursor: 'pointer' }}>Entendido</button>
+          </div>
+        )}
       </div>
 
       <div className="card dashboard-card bg-primary mb-4">
@@ -1159,15 +1205,14 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
   const [payments, setPayments] = useState<PaymentLocal[]>([]);
   const [expenses, setExpenses] = useState<ExpenseLocal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   // Form state
   const [formType, setFormType] = useState<'entrada' | 'saida' | null>(null);
-  // Entrada (payment)
   const [selectedMemberId, setSelectedMemberId] = useState('');
-  const [amount, setAmount] = useState('10');
+  const [amount, setAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
-  // Saída (expense)
   const [expAmount, setExpAmount] = useState('');
   const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
   const [expDescription, setExpDescription] = useState('');
@@ -1187,12 +1232,66 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
     setLoading(false);
   }
 
-  const getMemberTotal = (memberId: string) =>
-    payments.filter(p => p.member_id === memberId).reduce((s, p) => s + Number(p.amount), 0);
-
-  const totalIn = payments.reduce((s, p) => s + Number(p.amount), 0);
+  // Fundo inicial genérico de 09/05/2026
+  const INITIAL_FUND = 210;
+  const totalIn = payments.reduce((s, p) => s + Number(p.amount), 0) + INITIAL_FUND;
   const totalOut = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const fundBalance = totalIn - totalOut;
+
+  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const startYear = 2026;
+  const startMonthIndex = 5; // Junho = índice 5
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+
+  const getCotaStatus = (memberId: string, year: number, monthIndex: number) => {
+    if (year < startYear || (year === startYear && monthIndex < startMonthIndex)) return { status: 'na' };
+    
+    const monthStr = String(monthIndex + 1).padStart(2, '0');
+    const cotaNote = `COTA-${year}-${monthStr}`;
+    const payment = payments.find(p => p.member_id === memberId && p.notes === cotaNote);
+    
+    if (payment) return { status: 'paid', payment };
+    if (year < currentYear || (year === currentYear && monthIndex <= currentMonth)) return { status: 'debt' };
+    return { status: 'future' };
+  };
+
+  const getMemberDebt = (memberId: string) => {
+    let debt = 0;
+    for (let y = startYear; y <= currentYear; y++) {
+      const endM = (y === currentYear) ? currentMonth : 11;
+      const startM = (y === startYear) ? startMonthIndex : 0;
+      for (let m = startM; m <= endM; m++) {
+        const monthStr = String(m + 1).padStart(2, '0');
+        const isPaid = payments.some(p => p.member_id === memberId && p.notes === `COTA-${y}-${monthStr}`);
+        if (!isPaid) debt += 5;
+      }
+    }
+    return debt;
+  };
+
+  const handleMarkAsPaid = async (memberId: string, year: number, monthIndex: number) => {
+    if (!isAdmin) return;
+    const monthStr = String(monthIndex + 1).padStart(2, '0');
+    const cotaNote = `COTA-${year}-${monthStr}`;
+    const today = new Date().toISOString().slice(0, 10);
+    const { error } = await supabase.from('payments').insert([{
+      member_id: memberId, amount: 5, payment_date: today, notes: cotaNote
+    }]);
+    if (error) alert('Erro: ' + error.message);
+    else fetchAll();
+  };
+
+  const handleRemoveCota = async (paymentId: string) => {
+    if (!isAdmin) return;
+    if (!window.confirm('Remover pagamento desta cota?')) return;
+    const { error } = await supabase.from('payments').delete().eq('id', paymentId);
+    if (error) {
+      alert('Erro ao remover: ' + error.message);
+    } else {
+      fetchAll();
+    }
+  };
 
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1201,8 +1300,7 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
       member_id: selectedMemberId, amount: parseFloat(amount), payment_date: paymentDate, notes: notes.trim()
     }]);
     if (error) { alert('Erro: ' + error.message); return; }
-    setFormType(null); setSelectedMemberId(''); setAmount('10');
-    setPaymentDate(new Date().toISOString().slice(0, 10)); setNotes('');
+    setFormType(null); setSelectedMemberId(''); setAmount(''); setNotes('');
     fetchAll();
   };
 
@@ -1213,66 +1311,19 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
       amount: parseFloat(expAmount), expense_date: expDate, description: expDescription.trim()
     }]);
     if (error) { alert('Erro: ' + error.message); return; }
-    setFormType(null); setExpAmount(''); setExpDate(new Date().toISOString().slice(0, 10)); setExpDescription('');
-    fetchAll();
-  };
-
-  const deletePayment = async (id: string) => {
-    if (!window.confirm('Remover este pagamento?')) return;
-    await supabase.from('payments').delete().eq('id', id);
-    fetchAll();
-  };
-
-  const deleteExpense = async (id: string) => {
-    if (!window.confirm('Remover esta despesa?')) return;
-    await supabase.from('expenses').delete().eq('id', id);
+    setFormType(null); setExpAmount(''); setExpDescription('');
     fetchAll();
   };
 
   if (loading) return <div className="page p-4 fade-in" style={{ textAlign: 'center', paddingTop: '40px' }}>A carregar...</div>;
 
-  // Members see a "under construction" page
-  if (!isAdmin) {
-    return (
-      <div className="page p-4 fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
-        <div style={{
-          width: '100px', height: '100px', borderRadius: '50%',
-          background: 'linear-gradient(135deg, var(--color-primary), #f59e0b)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 24px', fontSize: '3rem',
-          boxShadow: '0 8px 32px rgba(var(--color-primary-rgb, 0,0,0), 0.25)'
-        }}>
-          🚧
-        </div>
-        <h2 style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--color-primary)', marginBottom: '12px' }}>
-          Em Construção
-        </h2>
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '1rem', maxWidth: '300px', lineHeight: 1.6, marginBottom: '8px' }}>
-          A secção das <strong>Cotas</strong> está a ser preparada com muito carinho! 🐦
-        </p>
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', maxWidth: '300px', lineHeight: 1.6 }}>
-          Estamos a decidir a melhor forma de gerir as contribuições do grupo. Em breve terão aqui acesso a toda a informação!
-        </p>
-        <div style={{
-          marginTop: '32px', padding: '16px 24px', borderRadius: '12px',
-          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-          fontSize: '0.85rem', color: 'var(--color-text-muted)', maxWidth: '300px'
-        }}>
-          💡 <em>Se tiver alguma sugestão sobre como devemos gerir as cotas, fale com o administrador!</em>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="page p-4 fade-in">
-      {/* Header */}
       <div className="welcome-section mb-4">
         <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: 'var(--color-primary)' }}>Cotas &amp; Despesas</h2>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Gestão financeira do grupo.</p>
       </div>
 
-      {/* Fund balance hero card */}
       <div className="card dashboard-card bg-primary mb-4">
         <div className="card-header"><span>Saldo da Caixa</span><Wallet size={20} /></div>
         <div className="card-body">
@@ -1281,85 +1332,133 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
         </div>
       </div>
 
-      {/* Summary grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-        <div className="card" style={{ textAlign: 'center', padding: '12px 8px' }}>
-          <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Total Recebido</p>
-          <p style={{ fontSize: '1.1rem', fontWeight: 700, color: '#22c55e' }}>{totalIn.toFixed(2)}€</p>
+      {isAdmin && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+          <button className={`btn ${formType === 'entrada' ? 'btn-primary' : ''}`} onClick={() => setFormType(formType === 'entrada' ? null : 'entrada')} style={{ padding: '10px', fontSize: '0.9rem', border: '1px solid var(--color-primary)', color: formType === 'entrada' ? 'white' : 'var(--color-primary)', background: formType === 'entrada' ? 'var(--color-primary)' : 'transparent', borderRadius: '8px' }}>
+            + Entrada Avulsa
+          </button>
+          <button className={`btn ${formType === 'saida' ? 'btn-primary' : ''}`} onClick={() => setFormType(formType === 'saida' ? null : 'saida')} style={{ padding: '10px', fontSize: '0.9rem', border: '1px solid var(--color-primary)', color: formType === 'saida' ? 'white' : 'var(--color-primary)', background: formType === 'saida' ? 'var(--color-primary)' : 'transparent', borderRadius: '8px' }}>
+            - Nova Despesa
+          </button>
         </div>
-        <div className="card" style={{ textAlign: 'center', padding: '12px 8px' }}>
-          <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Total Despesas</p>
-          <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-primary)' }}>{totalOut.toFixed(2)}€</p>
+      )}
+
+      {/* Formulários */}
+      {formType === 'entrada' && isAdmin && (
+        <div className="card mb-4 slide-down">
+          <h3 style={{ fontSize: '1rem', marginBottom: '12px' }}>Registar Entrada Avulsa</h3>
+          <form onSubmit={handleAddPayment} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <select value={selectedMemberId} onChange={e => setSelectedMemberId(e.target.value)} className="input-field" required>
+              <option value="">-- Passarinho --</option>
+              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <input type="number" step="0.01" placeholder="Valor (€)" value={amount} onChange={e => setAmount(e.target.value)} className="input-field" required />
+              <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="input-field" required />
+            </div>
+            <input type="text" placeholder="Notas (ex: Doação)" value={notes} onChange={e => setNotes(e.target.value)} className="input-field" />
+            <button type="submit" className="btn btn-primary" disabled={!selectedMemberId || !amount}>Guardar</button>
+          </form>
+        </div>
+      )}
+
+      {formType === 'saida' && isAdmin && (
+        <div className="card mb-4 slide-down" style={{ borderLeft: '3px solid var(--color-primary)' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: '12px' }}>Registar Despesa</h3>
+          <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <input type="text" placeholder="Descrição" value={expDescription} onChange={e => setExpDescription(e.target.value)} className="input-field" required />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <input type="number" step="0.01" placeholder="Valor (€)" value={expAmount} onChange={e => setExpAmount(e.target.value)} className="input-field" required />
+              <input type="date" value={expDate} onChange={e => setExpDate(e.target.value)} className="input-field" required />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={!expAmount || !expDescription.trim()}>Guardar</button>
+          </form>
+        </div>
+      )}
+
+      <div className="card mb-4" style={{ padding: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 className="section-title" style={{ margin: 0 }}>Grelha de Cotas (5€/mês)</h3>
+          <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="input-field" style={{ width: 'auto', padding: '4px 8px', margin: 0 }}>
+            {[2026, 2027, 2028].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+
+        <div style={{ overflowX: 'auto', paddingBottom: '10px' }}>
+          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--color-border)', width: '120px' }}>Passarinho</th>
+                {months.map(m => (
+                  <th key={m} style={{ padding: '8px 4px', borderBottom: '2px solid var(--color-border)', textAlign: 'center', width: '32px' }}>{m}</th>
+                ))}
+                <th style={{ textAlign: 'right', padding: '8px', borderBottom: '2px solid var(--color-border)' }}>Em Dívida</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map(member => {
+                const debt = getMemberDebt(member.id);
+                return (
+                  <tr key={member.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <td style={{ padding: '8px', fontWeight: 500 }}>{member.name}</td>
+                    {months.map((_, idx) => {
+                      const { status, payment } = getCotaStatus(member.id, selectedYear, idx);
+                      let content = <span style={{ color: 'var(--color-border)' }}>-</span>;
+                      
+                      if (status === 'paid') {
+                        content = (
+                          <div 
+                            title={`Pago a ${new Date(payment!.payment_date).toLocaleDateString('pt-PT')}`}
+                            onClick={() => isAdmin && handleRemoveCota(payment!.id)}
+                            style={{ 
+                              width: '24px', height: '24px', borderRadius: '4px', background: '#22c55e', 
+                              margin: '0 auto', cursor: isAdmin ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                          >
+                            <CheckSquare size={14} color="white" />
+                          </div>
+                        );
+                      } else if (status === 'debt') {
+                        content = (
+                          <div 
+                            title={isAdmin ? "Em dívida - Clique para pagar" : "Em dívida"}
+                            onClick={() => isAdmin && handleMarkAsPaid(member.id, selectedYear, idx)}
+                            style={{ 
+                              width: '24px', height: '24px', borderRadius: '4px', background: '#ef4444', 
+                              margin: '0 auto', cursor: isAdmin ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                          >
+                            {isAdmin && <Plus size={14} color="white" style={{ opacity: 0.8 }} />}
+                          </div>
+                        );
+                      } else if (status === 'future') {
+                        content = (
+                          <div 
+                            title={isAdmin ? "Ainda não venceu - Clique para pagar adiantado" : "Ainda não venceu"}
+                            onClick={() => isAdmin && handleMarkAsPaid(member.id, selectedYear, idx)}
+                            style={{ 
+                              width: '24px', height: '24px', borderRadius: '4px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', 
+                              margin: '0 auto', cursor: isAdmin ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                          >
+                            {isAdmin && <Plus size={14} color="var(--color-text-muted)" style={{ opacity: 0.3 }} />}
+                          </div>
+                        );
+                      }
+
+                      return <td key={idx} style={{ padding: '4px', textAlign: 'center' }}>{content}</td>;
+                    })}
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: debt > 0 ? '#ef4444' : 'var(--color-text-muted)' }}>
+                      {debt > 0 ? `${debt.toFixed(2)}€` : '0.00€'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Action buttons */}
-      {isAdmin && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-          <button
-            className={`btn ${formType === 'entrada' ? 'btn-primary' : ''}`}
-            onClick={() => setFormType(formType === 'entrada' ? null : 'entrada')}
-            style={{ padding: '10px', fontSize: '0.9rem', border: '1px solid var(--color-primary)', color: formType === 'entrada' ? 'white' : 'var(--color-primary)', background: formType === 'entrada' ? 'var(--color-primary)' : 'transparent', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-          >
-            <Plus size={16} /> Entrada
-          </button>
-          <button
-            className={`btn ${formType === 'saida' ? 'btn-primary' : ''}`}
-            onClick={() => setFormType(formType === 'saida' ? null : 'saida')}
-            style={{ padding: '10px', fontSize: '0.9rem', border: '1px solid var(--color-primary)', color: formType === 'saida' ? 'white' : 'var(--color-primary)', background: formType === 'saida' ? 'var(--color-primary)' : 'transparent', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-          >
-            <Trash2 size={16} /> Saída
-          </button>
-        </div>
-      )}
-
-      {/* Entrada form (payment by member) */}
-      {formType === 'entrada' && (
-        <div className="card mb-4 slide-down">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Registar Entrada (Pagamento)</h3>
-          <form onSubmit={handleAddPayment} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <select value={selectedMemberId} onChange={e => setSelectedMemberId(e.target.value)} className="input-field" required>
-              <option value="">-- Selecionar Passarinho --</option>
-              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>Valor (€)</label>
-                <input type="number" min="1" step="1" value={amount} onChange={e => setAmount(e.target.value)} className="input-field" required />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>Data</label>
-                <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="input-field" required />
-              </div>
-            </div>
-            <input type="text" placeholder="Notas (opcional)" value={notes} onChange={e => setNotes(e.target.value)} className="input-field" />
-            <button type="submit" className="btn btn-primary" disabled={!selectedMemberId || !amount}>Guardar Pagamento</button>
-          </form>
-        </div>
-      )}
-
-      {/* Saída form (expense) */}
-      {formType === 'saida' && (
-        <div className="card mb-4 slide-down" style={{ borderLeft: '3px solid var(--color-primary)' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Registar Saída (Despesa)</h3>
-          <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <input type="text" placeholder="Descrição (ex: Almoço no Restaurante X)" value={expDescription} onChange={e => setExpDescription(e.target.value)} className="input-field" required />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>Valor (€)</label>
-                <input type="number" min="0.01" step="0.01" value={expAmount} onChange={e => setExpAmount(e.target.value)} className="input-field" required />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>Data</label>
-                <input type="date" value={expDate} onChange={e => setExpDate(e.target.value)} className="input-field" required />
-              </div>
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={!expAmount || !expDescription.trim()}>Guardar Despesa</button>
-          </form>
-        </div>
-      )}
-
-      {/* Recent expenses */}
       {expenses.length > 0 && (
         <>
           <h3 className="section-title">Despesas Recentes</h3>
@@ -1373,7 +1472,12 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ color: 'var(--color-primary)', fontWeight: 700, fontSize: '1rem' }}>-{Number(exp.amount).toFixed(2)}€</span>
                   {isAdmin && (
-                    <button onClick={() => deleteExpense(exp.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }} aria-label="Remover">
+                    <button onClick={async () => {
+                      if(window.confirm('Remover?')) {
+                        await supabase.from('expenses').delete().eq('id', exp.id);
+                        fetchAll();
+                      }
+                    }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}>
                       <Trash2 size={14} />
                     </button>
                   )}
@@ -1384,59 +1488,38 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
         </>
       )}
 
-      {/* Members contribution list */}
-      <h3 className="section-title">Contribuição por Passarinho</h3>
-      {members.length === 0 ? (
-        <div className="empty-state">Nenhum Passarinho registado.</div>
-      ) : (
-        members.map(member => {
-          const contributed = getMemberTotal(member.id);
-          const memberPayments = payments.filter(p => p.member_id === member.id);
-
-          return (
-            <div key={member.id} className="card mb-4">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div className="avatar">{member.name.charAt(0).toUpperCase()}</div>
+      {payments.filter(p => !p.notes?.startsWith('COTA-')).length > 0 && (
+        <>
+          <h3 className="section-title">Entradas Avulsas Recentes</h3>
+          {payments.filter(p => !p.notes?.startsWith('COTA-')).slice(0, 5).map(p => {
+            const member = members.find(m => m.id === p.member_id);
+            return (
+              <div key={p.id} className="card mb-3" style={{ borderLeft: '3px solid #22c55e' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <h4 style={{ fontWeight: 600, fontSize: '1rem' }}>{member.name}</h4>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                      {memberPayments.length} pagamento{memberPayments.length !== 1 ? 's' : ''}
+                    <p style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                      {member?.name || 'Desconhecido'} {p.notes ? `(${p.notes})` : ''}
                     </p>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{new Date(p.payment_date).toLocaleDateString('pt-PT')}</p>
                   </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 700, color: contributed > 0 ? '#22c55e' : 'var(--color-text-muted)' }}>
-                    {contributed.toFixed(2)}€
-                  </span>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>contribuído</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#22c55e', fontWeight: 700, fontSize: '1rem' }}>+{Number(p.amount).toFixed(2)}€</span>
+                    {isAdmin && (
+                      <button onClick={async () => {
+                        if(window.confirm('Remover?')) {
+                          await supabase.from('payments').delete().eq('id', p.id);
+                          fetchAll();
+                        }
+                      }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-              {memberPayments.length > 0 && (
-                <div style={{ marginTop: '12px', borderTop: '1px solid var(--color-border)', paddingTop: '10px' }}>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 600 }}>Histórico</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {memberPayments.slice(0, 5).map(p => (
-                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                        <span style={{ color: 'var(--color-text-muted)' }}>
-                          {new Date(p.payment_date).toLocaleDateString('pt-PT')}{p.notes ? ` · ${p.notes}` : ''}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ color: '#22c55e', fontWeight: 600 }}>+{Number(p.amount).toFixed(2)}€</span>
-                          {isAdmin && (
-                            <button onClick={() => deletePayment(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', padding: '2px' }} aria-label="Remover">
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })
+            );
+          })}
+        </>
       )}
     </div>
   );

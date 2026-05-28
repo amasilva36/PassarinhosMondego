@@ -3,8 +3,8 @@
   "name": "Passarinhos do Mondego",
   "icons": [
     {
-      "src": "icon.svg",
-      "type": "image/svg+xml",
+      "src": "logo.jpg.jpg",
+      "type": "image/jpeg",
       "sizes": "192x192 512x512"
     }
   ],

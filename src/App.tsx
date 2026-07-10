@@ -1240,7 +1240,7 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
 
   const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const startYear = 2026;
-  const startMonthIndex = 5; // Junho = índice 5
+  const startMonthIndex = 6; // Julho = índice 6
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
 
@@ -1385,14 +1385,14 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
         </div>
 
         <div style={{ overflowX: 'auto', paddingBottom: '10px' }}>
-          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--color-border)', width: '120px' }}>Passarinho</th>
+                <th style={{ textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--color-border)', width: '110px', minWidth: '110px', position: 'sticky', left: 0, background: 'var(--color-card)', zIndex: 2, boxShadow: '2px 0 4px rgba(0,0,0,0.08)' }}>Passarinho</th>
                 {months.map(m => (
-                  <th key={m} style={{ padding: '8px 4px', borderBottom: '2px solid var(--color-border)', textAlign: 'center', width: '32px' }}>{m}</th>
+                  <th key={m} style={{ padding: '8px 4px', borderBottom: '2px solid var(--color-border)', textAlign: 'center', width: '32px', minWidth: '32px' }}>{m}</th>
                 ))}
-                <th style={{ textAlign: 'right', padding: '8px', borderBottom: '2px solid var(--color-border)' }}>Em Dívida</th>
+                <th style={{ textAlign: 'right', padding: '8px', borderBottom: '2px solid var(--color-border)', minWidth: '70px' }}>Em Dívida</th>
               </tr>
             </thead>
             <tbody>
@@ -1400,7 +1400,7 @@ function Payments({ isAdmin }: { isAdmin: boolean }) {
                 const debt = getMemberDebt(member.id);
                 return (
                   <tr key={member.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                    <td style={{ padding: '8px', fontWeight: 500 }}>{member.name}</td>
+                    <td style={{ padding: '8px', fontWeight: 500, position: 'sticky', left: 0, background: 'var(--color-card)', zIndex: 1, boxShadow: '2px 0 4px rgba(0,0,0,0.08)', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</td>
                     {months.map((_, idx) => {
                       const { status, payment } = getCotaStatus(member.id, selectedYear, idx);
                       let content = <span style={{ color: 'var(--color-border)' }}>-</span>;
